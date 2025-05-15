@@ -2,7 +2,8 @@ import pandas as pd
 import subprocess
 
 
-data_path = "/Users/benjamindraper/Library/CloudStorage/Dropbox/01_UCL/Projects/PB00020_PHD_RS/Alk_ScFv_Library/IGData"
+data_path = './data_files'
+
 
 aa_fp = f"{data_path}/tidy_aa.csv"
 tidy_df = pd.read_csv(aa_fp)

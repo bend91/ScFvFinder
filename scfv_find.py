@@ -208,12 +208,10 @@ def process_igblast_results(folder_path):
     print(f"{v_mask.sum()} v mask kept")
     j_mask = filtered_split_fasta_df["j_alignment_end"].notna()
     print(f"{j_mask.sum()} j mask kept")
-    # TODO - put the fixing stops in sequence here?
+    # Fixing stop codons in conserved regions that are likely sequencing errors
     stop_find = filtered_split_fasta_df["sequence_aa"].str.find("*")
     stop_mask2 = (stop_find != -1) & ((stop_find * 3) < filtered_split_fasta_df["fwr4_end"])
     stop_fix_mask3 = filtered_split_fasta_df["sequence_aa"].str.count("\*") < 2
-    # stop_fix_mask4 = stop_find.notna()
-    # stop_fix_mask4 =
     stop_fix_mask = stop_mask2 & stop_fix_mask3
     print(f"{stop_fix_mask.sum()} potential Stops to fix")
     filtered_split_fasta_df.loc[stop_fix_mask, "stop_location"] = stop_find * 3
@@ -232,24 +230,12 @@ def process_igblast_results(folder_path):
     # df.loc[:, "part_to_change"] = part_name
     print(f"{conserved_mask.sum()} stops fixed")
     stop_fix_mask = stop_fix_mask & conserved_mask
-    # print(filtered_split_fasta_df.loc[stop_fix_mask, "new_fwr3"].head())
-    # print(f"{filtered_split_fasta_df.loc[stop_fix_mask].shape[0]} actual Stops to fix")
-    # stop_mask = filtered_split_fasta_df["sequence_aa"].str.contains("\*")
-    # print(f"{stop_mask.sum()} sequence with stops")
-    # stop_find = filtered_split_fasta_df["sequence_aa"].str.find("*")
-    # stop_mask2 = (stop_find != -1) & ((stop_find * 3) < filtered_split_fasta_df["fwr4_end"])
-    # print(f"{stop_mask2.sum()} stops in the sequence")
-    # stop_mask = stop_mask | filtered_split_fasta_df["v_sequence_alignment_aa"].isna()
     sequence_parts = ["fwr1", "cdr1", "fwr2", "cdr2", "fwr3", "cdr3", "fwr4"]
     parts_mask = filtered_split_fasta_df[sequence_parts].isna().any(axis=1)
-    # filtered_split_fasta_df = filtered_split_fasta_df.loc[v_mask & j_mask & ~stop_mask & ~stop_mask2 & ~parts_mask]
-    # no_stops_mask = filtered_split_fasta_df["stop_location"].isna()
-    # Filter out stop codons that are not in conserved places - "stop_location".isna()
     filtered_split_fasta_df = filtered_split_fasta_df.loc[v_mask & j_mask & ~parts_mask | conserved_mask]
     print(f"{filtered_split_fasta_df.shape[0]} number of sequences left after filtering")
     # Removing the _pre and _post from the sequence ids and putting them in their own column
     filtered_split_fasta_df.loc[:, "sequence_id_clean"] = filtered_split_fasta_df["sequence_id"].str.replace("_pre", "").str.replace("_post", "")
-    # return filtered_split_fasta_df
     # Only keeping sequences where there are 2 alignments (heavy and light)
     gdf = filtered_split_fasta_df.groupby("sequence_id_clean").filter(lambda x: len(x) == 2)
     # Getting the unique sequences
@@ -260,10 +246,7 @@ def process_igblast_results(folder_path):
     return gdf
 
 
-# const_sequences = ["fwr1", "fwr2", "fwr3", "fwr4"]
-# germline_sequence = "v_germline_alignment"
-
-# columns = ['sequence_id', 'sequence', 'sequence_aa', 'locus', 'stop_codon',
+# igblast_columns = ['sequence_id', 'sequence', 'sequence_aa', 'locus', 'stop_codon',
 #        'vj_in_frame', 'v_frameshift', 'productive', 'rev_comp', 'complete_vdj',
 #        'd_frame', 'v_call', 'd_call', 'j_call', 'sequence_alignment',
 #        'germline_alignment', 'sequence_alignment_aa', 'germline_alignment_aa',
@@ -295,10 +278,8 @@ def check_fw(x):
     sequence_start = int(x["v_sequence_start"])
     sequence_stop_codon = x["sequence"][stop_loc + sequence_start - 1:stop_loc + sequence_start - 1 + 3]
     germline_codon = x["germline_alignment"][stop_loc:stop_loc + 3]
-    # print(sequence_stop_codon, germline_codon)
     if "N" in germline_codon:
         return None
-    # print(len(sequence_stop_codon), len(germline_codon))
     if (len(sequence_stop_codon) < 3) or (len(germline_codon) < 3):
         return None
     diff = compare_sequences(sequence_stop_codon, germline_codon)
@@ -314,41 +295,6 @@ def fix_codon(x):
     stop_off = int(x["codon_change_pos"])
     stop = int(x["stop_location"]) + stop_off
     return seq[start:stop] + germ_seq[stop] + seq[stop + 1:end]
-    # stop_df.loc[stop_loc, f"new_{fw}"] = [seq[int(start):int(stop)-1] + germ_seq[int(stop)] + seq[int(stop):int(end)] for seq, germ_seq, start, stop, end in stop_df.loc[stop_loc,["sequence", "germline_alignment", f"{fw}_start", f"stop_location", f"{fw}_end"]].values]
-
-
-# # If stop codon is in conserved regions of the sequencee
-# # Find the location of the stop codon in the sequence_alignment_aa -
-# stop_mask = df["sequence_aa"].str.count("\*") < 2
-# stop_df = df.loc[stop_mask]
-# aa_loc = stop_df.loc["sequence_aa"].str.find("*")
-# dna_loc = aa_loc * 3 # Change this to identify where in the codon the change is
-# stop_df.loc[:, "stop_location"] = dna_loc
-# for fw in ["fwr1", "fwr2", "fwr3", "fwr4"]:
-#      stop_loc = (stop_df["stop_location"] > stop_df[f"{fw}_start"]) & (stop_df["stop_location"] < stop_df[f"{fw}_end"])
-#      stop_df.loc[stop_loc, f"new_{fw}"] = [seq[int(start):int(stop)-1] + germ_seq[int(stop)] + seq[int(stop):int(end)] for seq, germ_seq, start, stop, end in stop_df.loc[stop_loc,["sequence", "germline_alignment", f"{fw}_start", f"stop_location", f"{fw}_end"]].values]
-#      # stop_df.loc[stop_loc, "stop_part"] = fw
-#      # stop_df.loc[stop_loc, "fw_stop_start"] = stop_df.loc[stop_loc, f"{fw}_start"]
-#      # stop_df.loc[:, "fwr_stop_loc"] = stop_df["stop_location"] - stop_df["fw_stop_start"] + stop_df["v_sequence_start"]
-
-
-#   fw_loc = df["stop_location"].values - df[df["stop_part"] + "_start"].T[0].values + 1 # this is wrong, just gives the locations for the first sequence
-#   df[fw][fw_loc] = df["germline_alignment"][dna_loc]
-# Compare the sequence to the germline and swap - need to change it in the "part" sequence as that's what gets taken forward
-# Find the start and end of the region affected - fwrx_start and fwrx_end
-# slice germline_alignment with these (remember to minus 1 from the start) - df.loc[seqid, "germline_alignment"].values[0][fwrx_start-1:fwrx_end]
-# Translate germline and then only change the sequence where there is a difference
-
-
-
-# seq1 = translate_sequence(sequence_part)
-# seq2 = translate_sequence(germline_part)
-# differences = compare_sequences(seq1, seq2)
-# for diff in differences:
-#     sequence_part[diff] = germline_part[diff]
-
-
-
 
 
 def find_scfv_sequences(grouped_df, sequence_parts: list, linker_seq: str):
@@ -364,14 +310,11 @@ def find_scfv_sequences(grouped_df, sequence_parts: list, linker_seq: str):
     results = []
     for i, (seqid, tdf) in enumerate(grouped_df):
         try:
-            # tdf = grouped_df.get_group(seqid)
             pre_row = tdf[tdf["sequence_id"] == f"{seqid}_pre"].iloc[0]
             post_row = tdf[tdf["sequence_id"] == f"{seqid}_post"].iloc[0]
 
             pre_seq = "".join([pre_row[part] for part in sequence_parts])
             post_seq = "".join([post_row[part] for part in sequence_parts])
-
-            # pre_seq = "".join(tdf.loc[tdf["sequence_id"] == f"{seqid}_pre", sequence_parts].values.flatten())
 
             pre_trans_frames = check_translation(pre_seq)
             if len(pre_trans_frames) == 1:
@@ -381,14 +324,8 @@ def find_scfv_sequences(grouped_df, sequence_parts: list, linker_seq: str):
             if len(post_trans_frames) == 1:
                 post_seq = post_seq[post_trans_frames[0]-1:]
 
-            # pre_seq_chain = tdf.loc[tdf["sequence_id"] == f"{seqid}_pre", "locus"].values[0]
-            # post_seq = "".join(tdf.loc[tdf["sequence_id"] == f"{seqid}_post", sequence_parts].values.flatten())
-
-            # post_seq_chain = tdf.loc[tdf["sequence_id"] == f"{seqid}_post", "locus"].values[0]
             scfv_seq = linker_seq.join([pre_seq, post_seq])
-            # print(scfv_seq)
             orientation = f"{pre_row['locus']}-{post_row['locus']}"
-            # results_df.loc[seqid] = [pre_seq, post_seq, scfv_seq, orientation]
             results.append({
               "sequence_id": seqid,
               "pre_seq": pre_seq,
@@ -417,8 +354,7 @@ def check_stops(df):
 
 
 def main():
-    # folder_path = get_folder_path()
-    folder_path = "/Users/benjamindraper/Library/CloudStorage/Dropbox/01_UCL/Projects/PB00020_PHD_RS/Alk_ScFv_Library/Alk5-8"
+    folder_path = get_folder_path()
     fastq = [x for x in os.listdir(folder_path) if ".fastq" in x]
     variables = {
         "min_length": 700, # minimum length of sequences you want to keep
@@ -453,7 +389,7 @@ def main():
         print("IGBLAST successfully downloaded")
     print("Running IgBLAST...")
     env["IGDATA"] = igblast
-    # run_igblast(igblast, folder_path)
+    run_igblast(igblast, folder_path)
     print("IgBLAST Successfully run")
     gdf = process_igblast_results(folder_path)
     print("IgBLAST Results filtered for complete variable sequences")
@@ -471,74 +407,5 @@ def main():
 
 
 if __name__ == "__main__":
-
         main()
-
         print("All done!")
-
-
-
-
-
-
-
-
-
-
-
-        # This is just for installing igblast and downloading the databases
-
-
-
-
-
-
-
-        # Load the previous dataframe
-        # merged_df = pd.read_csv(f"{folder_path}/merged_df.csv")
-        # Filter by the cleaned sequence ids
-
-
-
-
-
-
-        # # This goes through each sequence id and identifies the heavy and light chains
-        # # It then concatenates the sequences to make a full length ScFv sequence
-        # # TODO - make sure the nt sequences start in reading frame 1 - need to check vh and vl separately
-        # # TODO - this can probably be cleaned up a bit but should work as is
-        # sequence_parts = ["fwr1", "cdr1", "fwr2", "cdr2", "fwr3", "cdr3", "fwr4"]
-        # heavy_chain_id = "IGH"
-        # light_chain_id = "IGK"
-        # for i, seqid in enumerate(sequence_ids):
-        #     tdf = gdf.get_group(seqid)
-
-        #     pre_seq = "".join(tdf.loc[tdf["sequence_id"] == f"{seqid}_pre", sequence_parts].values.flatten())
-        #     pre_trans_frames = check_translation(pre_seq)
-        #     if len(pre_trans_frames) == 1:
-        #         pre_seq = pre_seq[pre_trans_frames[0]-1:]
-        #     pre_seq_chain = tdf.loc[tdf["sequence_id"] == f"{seqid}_pre", "locus"].values[0]
-
-
-        #     post_seq = "".join(tdf.loc[tdf["sequence_id"] == f"{seqid}_post", sequence_parts].values.flatten())
-        #     post_trans_frames = check_translation(post_seq)
-        #     if len(post_trans_frames) == 1:
-        #         post_seq = post_seq[post_trans_frames[0]-1:]
-        #     post_seq_chain = tdf.loc[tdf["sequence_id"] == f"{seqid}_post", "locus"].values[0]
-
-        #     scfv_seq = linker_seq.join([pre_seq, post_seq])
-
-        #     # print(scfv_seq)
-
-        #     orientation = "-".join([pre_seq_chain, post_seq_chain])
-
-        #     merged_df.loc[merged_df["query_id"] == seqid, ["pre_seq", "post_seq", "ScFv_seq", "orientation"]] = [pre_seq, post_seq, scfv_seq, orientation]
-
-        #     if i % 20 == 0:
-        #         print(f"{i}/{len(sequence_ids)} completed")
-        # # merged_df.head()
-
-        # merged_df.to_csv(f"{folder_path}/merged_df.csv", index=False)
-
-        # print(merged_df.shape[0])
-        # print(merged_df["ScFv_seq"].unique().shape[0], "ScFv sequences found")
