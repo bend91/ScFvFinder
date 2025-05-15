@@ -24,16 +24,30 @@ def get_folder_path():
 # TODO - move from NanoFilt to chopper
 
 def run_nanofilt(min_length, max_length, quality, fastq, folder_path, **kwargs):
-    process = subprocess.run([
-             "NanoFilt",
-            "-l",
-             f"{min_length}",
-             "--maxlength",
-             f"{max_length}",
-             "-q",
-             f"{quality}",
-             fastq,
-     ], capture_output=True)
+    if fastq.endswith(".gz"):
+        p1 = subprocess.Popen(["gunzip", "-c", fastq], stdout=subprocess.PIPE)
+        process = subprocess.run([
+                "NanoFilt",
+                "-l",
+                f"{min_length}",
+                "--maxlength",
+                f"{max_length}",
+                "-q",
+                f"{quality}"
+            ], stdin=p1.stdout, capture_output=True)
+        p1.stdout.close()
+        p1.wait()
+    else:
+        process = subprocess.run([
+                 "NanoFilt",
+                "-l",
+                 f"{min_length}",
+                 "--maxlength",
+                 f"{max_length}",
+                 "-q",
+                 f"{quality}",
+                 fastq
+         ], capture_output=True)
     if process_command_output(process, "NanoFilt"):
          write_process_to_file(process, f"{folder_path}/sample_filtered.fastq")
 
@@ -118,6 +132,7 @@ def split_df(df, folder_path):
     if processed_fasta.shape[0] == df.shape[0]:
         print("All IDS found in fasta file")
     else:
+        print(f"Processed_fasta: {processed_fasta.shape[0]}", f"Dataframe: {df.shape[0]}")
         print("Something has gone wrong with ID processing")
 
     # Merge the dataframes and save them
@@ -355,6 +370,7 @@ def check_stops(df):
 def main():
     folder_path = get_folder_path()
     fastq = [x for x in os.listdir(folder_path) if ".fastq" in x]
+    reference_fasta = input("Enter the full path of the fasta file to use as reference for BLAST, this should be just the linker sequence between the two variable chains: ")
     variables = {
         "min_length": 700, # minimum length of sequences you want to keep
         "max_length": 800, # maximum length of sequences you want to keep
@@ -362,7 +378,7 @@ def main():
         "fprimer": "GTCCCTGGCTCCACTGGA", # Sequence of the forward primer used to amplify the PCR fragment
         "rprimer": "GCGCTGGCGTCGTGGT", # Sequence of the reverse primer used to amplify the PCR fragment
         "fastq": f"{folder_path}/{fastq[0]}", # Path to the fastq file
-        "reference": f"{data_path}/reference.fasta", # Path to the reference fasta file
+        "reference": reference_fasta, # Path to the reference fasta file
         "folder_path": folder_path
 }
     print("Running Nanofilt...")
