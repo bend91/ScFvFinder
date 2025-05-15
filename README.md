@@ -24,10 +24,10 @@ python scfv_find.py
 
 The general pipeline and tools used:
 
-NanoFilt (https://github.com/wdecoster/nanofilt)
-Cutadapt (https://github.com/marcelm/cutadapt)
-blastn - needs to be installed by user
-igblast - if not installed then will be installed into the data_files directory
+- NanoFilt (https://github.com/wdecoster/nanofilt)
+- Cutadapt (https://github.com/marcelm/cutadapt)
+- blastn - needs to be installed by user
+- igblast - if not installed then will be installed into the data_files directory
 
 
 
