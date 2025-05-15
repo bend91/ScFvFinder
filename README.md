@@ -1,3 +1,5 @@
+# ScFvFinder
+
 ScFvFinder is a tool for identifying and finding valid ScFv sequences from long read sequencing from the fastq file.
 
 
@@ -22,9 +24,8 @@ python scfv_find.py
 
 The general pipeline and tools used:
 
-NanoFilt
-Cutadapt
-awk
+NanoFilt (https://github.com/wdecoster/nanofilt)
+Cutadapt (https://github.com/marcelm/cutadapt)
 blastn - needs to be installed by user
 igblast - if not installed then will be installed into the data_files directory
 
