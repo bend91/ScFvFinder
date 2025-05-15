@@ -1,5 +1,25 @@
 ScFvFinder is a tool for identifying and finding valid ScFv sequences from long read sequencing from the fastq file.
 
+
+To use:
+
+clone the repo
+
+```bash
+git clone https://github.com/bend91/ScFvFinder.git
+cd ScFvFinder
+```
+Optional but recommended - make a virtual enviornment, recommended to use python version 3.10 or higher, there are some broken dependencies in cutadapt with python 3.7, not sure where they are fixed
+```bash
+python3.10 -m venv ~/VirtualEnvironment/ScFvFinder
+source ~/VirtualEnvironment/ScFvFinder/bin/activate
+```
+Install the requirements
+```bash
+pip install -r requirements.txt
+python scfv_find.py
+```
+
 The general pipeline and tools used:
 
 NanoFilt
@@ -9,12 +29,15 @@ blastn - needs to be installed by user
 igblast - if not installed then will be installed into the data_files directory
 
 
+
+
+
 The tool assumes that you have variable chains separated by a linker, you supply a reference fasta file that includes the linker DNA sequence, e.g.:
 
 '''
 >Linker
 GGCGGCGGCGGCAGC
-'''
+
 
 blastn is then used to identify sequences which contain the linker and then contain sequences pre and post the linker that fit with the likely size of a complete ScFv
 
