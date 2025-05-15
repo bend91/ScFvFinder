@@ -34,9 +34,10 @@ igblast - if not installed then will be installed into the data_files directory
 
 The tool assumes that you have variable chains separated by a linker, you supply a reference fasta file that includes the linker DNA sequence, e.g.:
 
-'''
+```fasta
 >Linker
 GGCGGCGGCGGCAGC
+```
 
 
 blastn is then used to identify sequences which contain the linker and then contain sequences pre and post the linker that fit with the likely size of a complete ScFv
