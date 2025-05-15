@@ -333,7 +333,6 @@ def find_scfv_sequences(grouped_df, sequence_parts: list, linker_seq: str):
               "ScFv_seq": scfv_seq,
               "orientation": orientation,
               "translated_seq": translate_sequence(scfv_seq),
-              "cdr1":
               })
 
             if i % interval == 0:
