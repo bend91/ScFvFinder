@@ -5,11 +5,7 @@ from utils import *
 import numpy as np
 
 
-# This is the path to the folder that has all the files in, change it if you need to
-# folder_path = "/Users/rivanishah/Desktop/Alk_ScFv/Alk5-8"
 env = os.environ.copy()
-
-
 
 
 def get_folder_path():
@@ -24,8 +20,8 @@ def get_folder_path():
     get_folder_path()
 
 
-
-
+# reference for chopper paper - https://doi.org/10.1093/bioinformatics/btad311
+# TODO - move from NanoFilt to chopper
 
 def run_nanofilt(min_length, max_length, quality, fastq, folder_path, **kwargs):
     process = subprocess.run([
@@ -398,14 +394,16 @@ def find_scfv_sequences(grouped_df, sequence_parts: list, linker_seq: str):
               "pre_seq": pre_seq,
               "post_seq": post_seq,
               "ScFv_seq": scfv_seq,
-              "orientation": orientation
+              "orientation": orientation,
+              "translated_seq": translate_sequence(scfv_seq),
+              "cdr1":
               })
 
             if i % interval == 0:
                 print(f"{i}/{len(sequence_ids)} completed")
         except Exception as e:
             print(f"Exception with entry: {i}, error: {e}")
-    results_df = pd.DataFrame(results).set_index("sequence_id")
+    results_df = pd.DataFrame(results)
     return results_df
 
 
@@ -413,7 +411,7 @@ def check_stops(df):
     """
     Post find check to make sure no stop codons have slipped through
     """
-    df.loc[:, "translated_seq"] = df.apply(lambda x: translate_sequence(x["ScFv_seq"]))
+    df.loc[:, "translated_seq"] = df.apply(lambda x: translate_sequence(x["ScFv_seq"]), axis=1)
     df.loc[:, "contains_stop"] = df["ScFv_seq"].str.contains("\*")
     print(f"{df['contains_stop'].sum()} number of final sequences with stop codons")
 
