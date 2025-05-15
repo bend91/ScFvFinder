@@ -21,7 +21,7 @@ Install the requirements
 pip install -r requirements.txt
 python scfv_find.py
 ```
-
+...
 The general pipeline and tools used:
 
 - NanoFilt (https://github.com/wdecoster/nanofilt)
