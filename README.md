@@ -5,24 +5,31 @@ ScFvFinder is a tool for identifying and finding valid ScFv sequences from long 
 
 To use:
 
-clone the repo
+clone the repo into an appropriate directory
 
 ```bash
+cd ~/Tools # Just for example
 git clone https://github.com/bend91/ScFvFinder.git
 cd ScFvFinder
 ```
 Optional but recommended - make a virtual enviornment, recommended to use python version 3.10 or higher, there are some broken dependencies in cutadapt with python 3.7, not sure where they are fixed
+
+To check python versions available
 ```bash
-python3.10 -m venv ~/VirtualEnvironment/ScFvFinder
-source ~/VirtualEnvironment/ScFvFinder/bin/activate
+whereis python3
 ```
-Install the requirements
+```bash
+python3.10 -m venv ~/VENV/ScFvFinder
+source ~/VENV/ScFvFinder/bin/activate
+```
+Install the python requirements (note this doesn't install igblast or blastn)
 ```bash
 pip install -r requirements.txt
+```
+Run the finder:
+```bash
 python scfv_find.py
 ```
-
-...
 
 ---
 

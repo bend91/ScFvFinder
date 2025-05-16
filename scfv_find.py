@@ -1,5 +1,4 @@
 import os
-import pprint
 import subprocess
 from utils import *
 import numpy as np
@@ -8,8 +7,9 @@ import numpy as np
 env = os.environ.copy()
 
 
-def get_folder_path():
+def get_folder_path()->str:
     """
+    Validates a user entered folder path to be the one that contains the file they want
     """
     fpath = input("Enter the full path to the folder containing the fastq file you want to process: ")
     files = os.listdir(fpath)
@@ -24,6 +24,9 @@ def get_folder_path():
 # TODO - move from NanoFilt to chopper
 
 def run_nanofilt(min_length, max_length, quality, fastq, folder_path, **kwargs):
+    """
+    Runs NanoFilt as a command line process and writes the output to a fastq file
+    """
     if fastq.endswith(".gz"):
         p1 = subprocess.Popen(["gunzip", "-c", fastq], stdout=subprocess.PIPE)
         process = subprocess.run([
@@ -53,6 +56,9 @@ def run_nanofilt(min_length, max_length, quality, fastq, folder_path, **kwargs):
 
 
 def run_cutadapt(fprimer, rprimer, folder_path, **kwargs):
+    """
+    Runs cutadapt as a command line process and then writes the output to a new fastq file
+    """
     process = subprocess.run([
              "cutadapt",
              "-g",
@@ -66,6 +72,9 @@ def run_cutadapt(fprimer, rprimer, folder_path, **kwargs):
 
 
 def run_awk(folder_path, **kwargs):
+    """
+    Uses awk to convert a fastq file to a fasta file
+    """
     process = subprocess.run([
                  "awk",
                  'NR%4==1 {printf ">%s\\n", substr($1,2); next} NR%4==2 {print}',
@@ -77,6 +86,9 @@ def run_awk(folder_path, **kwargs):
 
 
 def run_blast(reference, folder_path, **kwargs):
+    """
+    runs blast of a fasta file using the given reference and writes to a tsv file
+    """
     process = subprocess.run([
             "blastn",
             "-query",
@@ -93,7 +105,14 @@ def run_blast(reference, folder_path, **kwargs):
     process_command_output(process, "BLAST")
 
 
-def process_blast_df(min_match_length, min_pct_match, query_start, folder_path, **kwargs):
+def process_blast_df(min_match_length: int, min_pct_match: float, query_start: int, folder_path: str, **kwargs)->pd.DataFrame:
+    """
+    Processes the output of blast to identify whole sequences that match the given arguments
+    :param min_match_length: the minimum length of a match to keep
+    :param min_pct_match: threshold of the minimum percentage match to keep
+    :param query_start: location of where the matches should start
+    :param folder_path: path to the folder containing the tsv to process
+    """
     fp = f"{folder_path}/blast_output.tsv"
     df1 = pd.read_csv(fp, sep="\t", header=None)
     print(f"BLAST found {df1.shape[0]} matches")
@@ -121,7 +140,12 @@ def process_blast_df(min_match_length, min_pct_match, query_start, folder_path, 
     return filtered_df1
 
 
-def split_df(df, folder_path):
+def split_df(df: pd.DataFrame, folder_path: str)->pd.DataFrame:
+    """
+    Takes a dataframe of potential ScFv sequences and splits them into each variable chain, removing the linker
+    :param df: dataframe containing the output of blast, post filtering
+    :param folder_path: folder_path to which the output will be saved
+    """
     filtered_ids = df["query_id"].unique()
     # Use the filtered and trimmed fasta file
     fasta_file = f"{folder_path}/sample_trimmed.fasta"
@@ -158,7 +182,12 @@ def split_df(df, folder_path):
     return merged_df
 
 
-def check_igblast(igblast, data_path):
+def check_igblast(igblast: str, data_path: str)->bool:
+    """
+    Checks whether IgBLAST is found in the given directory, if not then downloads and extracts.
+    :param igblast: string of the path to where igblast is located or where you want it to be downloaded and extracted
+    :param data_path: sttring of the path to data files, should be the parent directory of igblast
+    """
     try:
         os.listdir(igblast)
         print("IGBLAST already installed")
@@ -179,38 +208,43 @@ def check_igblast(igblast, data_path):
         return False
 
 
-def run_igblast(igblast, folder_path):
-        process = subprocess.run([
-                f"{igblast}/bin/igblastn",
-                "-germline_db_V",
-                f"{igblast}/database/mouse_gl_V",
-                "-germline_db_J",
-                f"{igblast}/database/mouse_gl_J",
-                "-germline_db_D",
-                f"{igblast}/database/mouse_gl_D",
-                "-organism",
-                "mouse",
-                "-query",
-                f"{folder_path}/split_fasta.fasta",
-                "-num_alignments_V",
-                "1",
-                "-num_alignments_J",
-                "1",
-                "-num_alignments_D",
-                "1",
-                "-outfmt",
-                "19",
-                "-extend_align5end",
-                "-extend_align3end",
-                "-auxiliary_data",
-                f"{igblast}/optional_file/mouse_gl.aux",
-                "-out",
-                f"{folder_path}/split_fasta_output.tsv"
+def run_igblast(igblast: str, folder_path: str):
+    """
+    Runs igblast on the data in folder_path
+    :param igblast: path to where igblast is located
+    :param folder_path: path to the directory containing the fasta file to be analysed
+    """
+    process = subprocess.run([
+            f"{igblast}/bin/igblastn",
+            "-germline_db_V",
+            f"{igblast}/database/mouse_gl_V",
+            "-germline_db_J",
+            f"{igblast}/database/mouse_gl_J",
+            "-germline_db_D",
+            f"{igblast}/database/mouse_gl_D",
+            "-organism",
+            "mouse",
+            "-query",
+            f"{folder_path}/split_fasta.fasta",
+            "-num_alignments_V",
+            "1",
+            "-num_alignments_J",
+            "1",
+            "-num_alignments_D",
+            "1",
+            "-outfmt",
+            "19",
+            "-extend_align5end",
+            "-extend_align3end",
+            "-auxiliary_data",
+            f"{igblast}/optional_file/mouse_gl.aux",
+            "-out",
+            f"{folder_path}/split_fasta_output.tsv"
         ], capture_output=True, env=env)
-        process_command_output(process, "IGBlast")
+    process_command_output(process, "IGBlast")
 
 
-def process_igblast_results(folder_path):
+def process_igblast_results(folder_path: str):
     fp = f"{folder_path}/split_fasta_output.tsv"
     split_fasta_df = pd.read_csv(fp, sep="\t")
     print(f"{split_fasta_df.shape[0]} total number of sequences to process")
@@ -242,9 +276,7 @@ def process_igblast_results(folder_path):
         # part_name[in_range & (pd.isnull(part_name))] = part
         filtered_split_fasta_df.loc[in_range & stop_fix_mask, part] = filtered_split_fasta_df.loc[in_range & stop_fix_mask].apply(fix_codon, axis=1)
         filtered_split_fasta_df.loc[in_range & stop_fix_mask, "stop_fixed"] = True
-    # df.loc[:, "part_to_change"] = part_name
     print(f"{conserved_mask.sum()} stops fixed")
-    stop_fix_mask = stop_fix_mask & conserved_mask
     sequence_parts = ["fwr1", "cdr1", "fwr2", "cdr2", "fwr3", "cdr3", "fwr4"]
     parts_mask = filtered_split_fasta_df[sequence_parts].isna().any(axis=1)
     filtered_split_fasta_df = filtered_split_fasta_df.loc[v_mask & j_mask & ~parts_mask | conserved_mask]
@@ -259,6 +291,18 @@ def process_igblast_results(folder_path):
     # Grouping by sequence ids
     gdf = gdf.groupby("sequence_id_clean")
     return gdf
+
+
+# TODO - optimise this to use in the main code
+def fix_stops(df, conserved_parts):
+    conserved_mask = np.zeros(len(df), dtype=bool)
+    for part in conserved_parts:
+        in_range = (df["stop_location"] > df[f"{part}_start"]) & (df["stop_location"] < df[f"{part}_end"])
+        conserved_mask |= in_range
+        df.loc[in_range, "part_to_change"] = part
+        # part_name[in_range & (pd.isnull(part_name))] = part
+        df.loc[in_range, part] = df.loc[in_range & stop_fix_mask].apply(fix_codon, axis=1)
+        df.loc[in_range, "stop_fixed"] = True
 
 
 # igblast_columns = ['sequence_id', 'sequence', 'sequence_aa', 'locus', 'stop_codon',
@@ -288,7 +332,10 @@ def process_igblast_results(folder_path):
 #        'np2_length']
 
 
-def check_fw(x):
+def check_fw(x)->int:
+    """
+    Checks the difference in the identified stop codon locations between the sequence and the germline alignment to identify the specific base that's different
+    """
     stop_loc = int(x["stop_location"])
     sequence_start = int(x["v_sequence_start"])
     sequence_stop_codon = x["sequence"][stop_loc + sequence_start - 1:stop_loc + sequence_start - 1 + 3]
@@ -302,7 +349,11 @@ def check_fw(x):
         return int(diff[0])
     return None
 
-def fix_codon(x):
+
+def fix_codon(x)->str:
+    """
+    Fixes a stop codon in the constant region of a sequence by mutating the differing base to that found in the germline sequence and returns the "fixed" region
+    """
     seq = x["sequence"]
     germ_seq = x["germline_alignment"]
     start = int(x[f"{x['part_to_change']}_start"]) - 1
@@ -312,7 +363,7 @@ def fix_codon(x):
     return seq[start:stop] + germ_seq[stop] + seq[stop + 1:end]
 
 
-def find_scfv_sequences(grouped_df, sequence_parts: list, linker_seq: str):
+def find_scfv_sequences(grouped_df, sequence_parts: list, linker_seq: str)->pd.DataFrame:
     """
     Finds the valid variable chain sequences in the grouped dataframe that contain all the parts defined in sequence-parts
     :param gdf: Dataframe grouped by sequence id, should be the output of process_igblast_results()
@@ -371,6 +422,7 @@ def main():
     folder_path = get_folder_path()
     fastq = [x for x in os.listdir(folder_path) if ".fastq" in x]
     reference_fasta = input("Enter the full path of the fasta file to use as reference for BLAST, this should be just the linker sequence between the two variable chains: ")
+    # TODO - Move this to a config file
     variables = {
         "min_length": 700, # minimum length of sequences you want to keep
         "max_length": 800, # maximum length of sequences you want to keep
@@ -380,7 +432,7 @@ def main():
         "fastq": f"{folder_path}/{fastq[0]}", # Path to the fastq file
         "reference": reference_fasta, # Path to the reference fasta file
         "folder_path": folder_path
-}
+    }
     print("Running Nanofilt...")
     run_nanofilt(**variables)
     print("Nanofilt successful\nRunning Cutadapt...")
@@ -390,6 +442,7 @@ def main():
     print("Awk successfully run\nRunning BLAST to find sequences that have a central linker...")
     run_blast(**variables)
     print("BLAST run successfully\nFiltering BLAST dataset...")
+    # TODO - put this in config with above variables
     filtered_df = process_blast_df(
         min_match_length=40,
         min_pct_match=95,
