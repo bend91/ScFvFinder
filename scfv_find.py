@@ -40,7 +40,7 @@ def install_tool(tool):
         os.mkdir(f"{data_path}/{tool}/database")
         process = subprocess.run(["tar", "-xvf", f"{data_path}/mouse_gl_VDJ.tar", "-C", f"{data_path}/{tool}/database"], capture_output=True)
         process_command_output(process, "Extract igblast database")
-    env["PATH"] = f"{data_path}/{tool}/bin:" + env["PATH"]
+    env["PATH"] = f"{data_path}/{tool}/bin" + os.pathsep + env["PATH"]
 
 
 def get_folder_path()->str:
@@ -465,7 +465,7 @@ def main():
                 install_tool(tool)
             else:
                 tool_path = input("Enter the path to the tool \"bin\" folder: ")
-                env["PATH"] = tool_path + ":" + env["PATH"]
+                env["PATH"] = tool_path + os.pathsep + env["PATH"]
 
     igblast = subprocess.run(["whereis", "igblastn"], capture_output=True, env=env).stdout.decode()
     igblast = igblast[igblast.find(":") + 2:igblast.rfind("/bin/")]
