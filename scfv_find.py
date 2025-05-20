@@ -4,7 +4,43 @@ from utils import *
 import numpy as np
 
 
+# TODO - Add logging to a logfile instead of printing
+# TODO - check if blastn is in path, if not then ask to download
+# TODO - Add multi-platform support, at the moment just MacOS is supported
+
+
 env = os.environ.copy()
+
+
+
+
+def check_tools(tool):
+    try:
+        subprocess.run([tool])
+    except FileNotFoundError:
+        return False
+
+
+def install_tool(tool):
+    tool_execs = {
+        "blastn": "https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/ncbi-blast-2.16.0+-universal-macosx.tar.gz",
+        "igblast": "https://ftp.ncbi.nih.gov/blast/executables/igblast/release/LATEST/ncbi-igblast-1.22.0-x64-macosx.tar.gz"
+        }
+    if tool not in list(tool_execs.keys()):
+        print(f"{tool} not supported yet, something went wrong...")
+        return None
+    process = subprocess.run(["curl", tool_execs[tool], "-o", f"{data_path}/{tool}.tar.gz"], capture_output=True)
+    process_command_output(process, f"Download {tool}")
+    process = subprocess.run(["tar", "-xvzf", f"{data_path}/{tool}.tar.gz", "-C", f"{data_path}"], capture_output=True)
+    process_command_output(process, f"Extract {tool}")
+    if tool == "igblast":
+        print("Downloading mouse database...")
+        process = subprocess.run(["curl", "https://ftp.ncbi.nih.gov/blast/executables/igblast/release/database/mouse_gl_VDJ.tar", "-o", f"{data_path}/mouse_gl_VDJ.tar"], capture_output=True)
+        process_command_output(process, "Download igblast database")
+        os.mkdir(f"{data_path}/{tool}/database")
+        process = subprocess.run(["tar", "-xvf", f"{data_path}/mouse_gl_VDJ.tar", "-C", f"{data_path}/{tool}/database"], capture_output=True)
+        process_command_output(process, "Extract igblast database")
+    env["PATH"] = f"{data_path}/{tool}/bin:" + env["PATH"]
 
 
 def get_folder_path()->str:
@@ -12,6 +48,7 @@ def get_folder_path()->str:
     Validates a user entered folder path to be the one that contains the file they want
     """
     fpath = input("Enter the full path to the folder containing the fastq file you want to process: ")
+    fpath = fpath.replace('\'', "").replace("\"", "")
     files = os.listdir(fpath)
     print("These files found in this directory: ")
     [print(x) for x in files]
@@ -101,7 +138,7 @@ def run_blast(reference, folder_path, **kwargs):
             "6 std sseq",
             "-evalue",
             "1e-5"
-    ], capture_output=True)
+    ], capture_output=True, env=env)
     process_command_output(process, "BLAST")
 
 
@@ -182,30 +219,30 @@ def split_df(df: pd.DataFrame, folder_path: str)->pd.DataFrame:
     return merged_df
 
 
-def check_igblast(igblast: str, data_path: str)->bool:
-    """
-    Checks whether IgBLAST is found in the given directory, if not then downloads and extracts.
-    :param igblast: string of the path to where igblast is located or where you want it to be downloaded and extracted
-    :param data_path: sttring of the path to data files, should be the parent directory of igblast
-    """
-    try:
-        os.listdir(igblast)
-        print("IGBLAST already installed")
-        return True
+# def check_igblast(igblast: str, data_path: str)->bool:
+#     """
+#     Checks whether IgBLAST is found in the given directory, if not then downloads and extracts.
+#     :param igblast: string of the path to where igblast is located or where you want it to be downloaded and extracted
+#     :param data_path: sttring of the path to data files, should be the parent directory of igblast
+#     """
+#     try:
+#         os.listdir(igblast)
+#         print("IGBLAST already installed")
+#         return True
 
-    except FileNotFoundError:
-        print("Downloading igblast...")
-        process = subprocess.run(["curl","https://ftp.ncbi.nih.gov/blast/executables/igblast/release/LATEST/ncbi-igblast-1.22.0-x64-macosx.tar.gz", "-o", f"{data_path}/ncbi-igblast-1.22.0-x64-macosx.tar.gz"], capture_output=True)
-        process_command_output(process, "Download igblast")
-        process = subprocess.run(["tar", "-xvzf", f"{data_path}/ncbi-igblast-1.22.0-x64-macosx.tar.gz", "-C", f"{data_path}"], capture_output=True)
-        process_command_output(process, "Extract igblast")
-        print("Downloading mouse database...")
-        process = subprocess.run(["curl", "https://ftp.ncbi.nih.gov/blast/executables/igblast/release/database/mouse_gl_VDJ.tar", "-o", f"{data_path}/mouse_gl_VDJ.tar"], capture_output=True)
-        process_command_output(process, "Download igblast database")
-        os.mkdir(f"{igblast}/database")
-        process = subprocess.run(["tar", "-xvf", f"{data_path}/mouse_gl_VDJ.tar", "-C", f"{igblast}/database"], capture_output=True)
-        process_command_output(process, "Extract igblast database")
-        return False
+#     except FileNotFoundError:
+#         print("Downloading igblast...")
+#         process = subprocess.run(["curl","https://ftp.ncbi.nih.gov/blast/executables/igblast/release/LATEST/ncbi-igblast-1.22.0-x64-macosx.tar.gz", "-o", f"{data_path}/ncbi-igblast-1.22.0-x64-macosx.tar.gz"], capture_output=True)
+#         process_command_output(process, "Download igblast")
+#         process = subprocess.run(["tar", "-xvzf", f"{data_path}/ncbi-igblast-1.22.0-x64-macosx.tar.gz", "-C", f"{data_path}"], capture_output=True)
+#         process_command_output(process, "Extract igblast")
+#         print("Downloading mouse database...")
+#         process = subprocess.run(["curl", "https://ftp.ncbi.nih.gov/blast/executables/igblast/release/database/mouse_gl_VDJ.tar", "-o", f"{data_path}/mouse_gl_VDJ.tar"], capture_output=True)
+#         process_command_output(process, "Download igblast database")
+#         os.mkdir(f"{igblast}/database")
+#         process = subprocess.run(["tar", "-xvf", f"{data_path}/mouse_gl_VDJ.tar", "-C", f"{igblast}/database"], capture_output=True)
+#         process_command_output(process, "Extract igblast database")
+#         return False
 
 
 def run_igblast(igblast: str, folder_path: str):
@@ -215,7 +252,7 @@ def run_igblast(igblast: str, folder_path: str):
     :param folder_path: path to the directory containing the fasta file to be analysed
     """
     process = subprocess.run([
-            f"{igblast}/bin/igblastn",
+            f"igblastn",
             "-germline_db_V",
             f"{igblast}/database/mouse_gl_V",
             "-germline_db_J",
@@ -419,9 +456,25 @@ def check_stops(df):
 
 
 def main():
+    tools = ["blastn", "igblast"]
+    print("Checking tools...")
+    for tool in tools:
+        if not check_tools(tool):
+            print(f"{tool} not found in path")
+            if input(f"Install {tool} (Y/N)?") in "Yesyes":
+                install_tool(tool)
+            else:
+                tool_path = input("Enter the path to the tool \"bin\" folder: ")
+                env["PATH"] = tool_path + ":" + env["PATH"]
+
+    igblast = subprocess.run(["whereis", "igblastn"], capture_output=True, env=env).stdout.decode()
+    igblast = igblast[igblast.find(":") + 2:igblast.rfind("/bin/")]
+    env["IGDATA"] = igblast
+
     folder_path = get_folder_path()
     fastq = [x for x in os.listdir(folder_path) if ".fastq" in x]
     reference_fasta = input("Enter the full path of the fasta file to use as reference for BLAST, this should be just the linker sequence between the two variable chains: ")
+    reference_fasta = reference_fasta.strip().replace('\'', "").replace("\"", "")
     # TODO - Move this to a config file
     variables = {
         "min_length": 700, # minimum length of sequences you want to keep
@@ -452,11 +505,11 @@ def main():
     print("Filtering completed\nSplitting ScFv chains...")
     merged_df = split_df(filtered_df, folder_path)
     print("Splitting completed\nPreparing IGBLAST...")
-    igblast = f"{data_path}/ncbi-igblast-1.22.0"
-    if not check_igblast(igblast, data_path):
-        print("IGBLAST successfully downloaded")
+    # igblast = f"{data_path}/ncbi-igblast-1.22.0"
+    # if not check_igblast(igblast, data_path):
+    #     print("IGBLAST successfully downloaded")
     print("Running IgBLAST...")
-    env["IGDATA"] = igblast
+
     run_igblast(igblast, folder_path)
     print("IgBLAST Successfully run")
     gdf = process_igblast_results(folder_path)

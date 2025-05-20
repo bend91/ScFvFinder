@@ -5,6 +5,12 @@ ScFvFinder is a tool for identifying and finding valid ScFv sequences from long 
 
 To use:
 
+## Installation
+
+For now only MacOS is supported, linux support is imminent, windows support unknown
+
+These commands only need to be run once
+
 clone the repo into an appropriate directory
 
 ```bash
@@ -26,7 +32,8 @@ Install the python requirements (note this doesn't install igblast or blastn)
 ```bash
 pip install -r requirements.txt
 ```
-Run the finder:
+
+## Using the tool
 ```bash
 python scfv_find.py
 ```
