@@ -2,16 +2,15 @@ import os
 import subprocess
 from utils import *
 import numpy as np
+import logging
 
 
-# TODO - Add logging to a logfile instead of printing
-# TODO - check if blastn is in path, if not then ask to download
+# TODO - Add logging to a logfile instead of printing - done this, kept some prints for users to see progress
+# TODO - check if blastn is in path, if not then ask to download  - Donne this
 # TODO - Add multi-platform support, at the moment just MacOS is supported
 
 
 env = os.environ.copy()
-
-
 
 
 def check_tools(tool):
@@ -152,7 +151,7 @@ def process_blast_df(min_match_length: int, min_pct_match: float, query_start: i
     """
     fp = f"{folder_path}/blast_output.tsv"
     df1 = pd.read_csv(fp, sep="\t", header=None)
-    print(f"BLAST found {df1.shape[0]} matches")
+    logging.info(f"BLAST found {df1.shape[0]} matches")
     df1.columns = [
             "query_id",
             "ref_id",
@@ -173,7 +172,7 @@ def process_blast_df(min_match_length: int, min_pct_match: float, query_start: i
     query_start_mask = df1["query_start"] > query_start
     filtered_df1 = df1.loc[match_mask & pct_mask & query_start_mask].copy()
     filtered_df1.to_csv(f"{folder_path}/blast_output_filtered.csv", index=False)
-    print(f"After filtering {filtered_df1.shape[0]} sequences remain")
+    logging.info(f"After filtering {filtered_df1.shape[0]} sequences remain")
     return filtered_df1
 
 
@@ -191,10 +190,10 @@ def split_df(df: pd.DataFrame, folder_path: str)->pd.DataFrame:
 
     # Check that the resulting dataframes are the same size
     if processed_fasta.shape[0] == df.shape[0]:
-        print("All IDS found in fasta file")
+        logging.info("All IDS found in fasta file")
     else:
-        print(f"Processed_fasta: {processed_fasta.shape[0]}", f"Dataframe: {df.shape[0]}")
-        print("Something has gone wrong with ID processing")
+        logging.error(f"Processed_fasta: {processed_fasta.shape[0]}", f"Dataframe: {df.shape[0]}")
+        logging.error("Something has gone wrong with ID processing")
 
     # Merge the dataframes and save them
     merged_df = pd.merge(df, processed_fasta, on="query_id")
@@ -215,7 +214,7 @@ def split_df(df: pd.DataFrame, folder_path: str)->pd.DataFrame:
                 f.write(merged_df.loc[merged_df["query_id"] == qid, "pre_linker_sequence"].values[0].encode("utf-8") + b"\n")
                 f.write(f">{qid}_post\n".encode("utf-8"))
                 f.write(merged_df.loc[merged_df["query_id"] == qid, "post_linker_sequence"].values[0].encode("utf-8") + b"\n")
-    print("Sequences split and new fasta file made")
+    logging.info("Sequences split and new fasta file made")
     return merged_df
 
 
@@ -291,15 +290,15 @@ def process_igblast_results(folder_path: str):
     #    Only well delimited V-domains (no NAs for the V gene start nor J gene end) from the IgBLAST output are considered.
     # Removing sequences with stop codons
     v_mask = filtered_split_fasta_df["v_alignment_start"].notna()
-    print(f"{v_mask.sum()} v mask kept")
+    logging.info(f"V Mask total: {v_mask.sum()}")
     j_mask = filtered_split_fasta_df["j_alignment_end"].notna()
-    print(f"{j_mask.sum()} j mask kept")
+    logging.info(f"J Mask total: {j_mask.sum()}")
     # Fixing stop codons in conserved regions that are likely sequencing errors
     stop_find = filtered_split_fasta_df["sequence_aa"].str.find("*")
     stop_mask2 = (stop_find != -1) & ((stop_find * 3) < filtered_split_fasta_df["fwr4_end"])
     stop_fix_mask3 = filtered_split_fasta_df["sequence_aa"].str.count("\*") < 2
     stop_fix_mask = stop_mask2 & stop_fix_mask3
-    print(f"{stop_fix_mask.sum()} potential Stops to fix")
+    logging.info(f"Potential stops to fix: {stop_fix_mask.sum()}")
     filtered_split_fasta_df.loc[stop_fix_mask, "stop_location"] = stop_find * 3
     filtered_split_fasta_df.loc[stop_fix_mask, "codon_change_pos"] = filtered_split_fasta_df.loc[stop_fix_mask].apply(check_fw, axis=1)
     stop_fix_mask = stop_fix_mask & filtered_split_fasta_df["codon_change_pos"].notna()
@@ -313,7 +312,9 @@ def process_igblast_results(folder_path: str):
         # part_name[in_range & (pd.isnull(part_name))] = part
         filtered_split_fasta_df.loc[in_range & stop_fix_mask, part] = filtered_split_fasta_df.loc[in_range & stop_fix_mask].apply(fix_codon, axis=1)
         filtered_split_fasta_df.loc[in_range & stop_fix_mask, "stop_fixed"] = True
-    print(f"{conserved_mask.sum()} stops fixed")
+    msg = f"Actual stops fixed: {conserved_mask.sum()}"
+    print(msg)
+    logging.info(msg)
     sequence_parts = ["fwr1", "cdr1", "fwr2", "cdr2", "fwr3", "cdr3", "fwr4"]
     parts_mask = filtered_split_fasta_df[sequence_parts].isna().any(axis=1)
     filtered_split_fasta_df = filtered_split_fasta_df.loc[v_mask & j_mask & ~parts_mask | conserved_mask]
@@ -324,7 +325,7 @@ def process_igblast_results(folder_path: str):
     gdf = filtered_split_fasta_df.groupby("sequence_id_clean").filter(lambda x: len(x) == 2)
     # Getting the unique sequences
     sequence_ids = gdf["sequence_id_clean"].unique()
-    print(len(sequence_ids), "unique sequence ids")
+    logging.info(f"Unique sequence ids: {len(sequence_ids)}")
     # Grouping by sequence ids
     gdf = gdf.groupby("sequence_id_clean")
     return gdf
@@ -402,8 +403,8 @@ def fix_codon(x)->str:
 
 def find_scfv_sequences(grouped_df, sequence_parts: list, linker_seq: str)->pd.DataFrame:
     """
-    Finds the valid variable chain sequences in the grouped dataframe that contain all the parts defined in sequence-parts
-    :param gdf: Dataframe grouped by sequence id, should be the output of process_igblast_results()
+    Finds the valid variable chain sequences in the grouped dataframe that contain all the parts defined in sequence_parts
+    :param gdf: Grouped Dataframe grouped by sequence id, should be the output of process_igblast_results()
     :param sequence_parts: a list of all the parts that a valid sequence should contain, probably a minimum of ["cdr1", "cdr2", "cdr3"]
     :param linker_seq: dna sequence of the linker you want to separate heavy and light chains
     """
@@ -441,7 +442,7 @@ def find_scfv_sequences(grouped_df, sequence_parts: list, linker_seq: str)->pd.D
             if i % interval == 0:
                 print(f"{i}/{len(sequence_ids)} completed")
         except Exception as e:
-            print(f"Exception with entry: {i}, error: {e}")
+            logging.warning(f"Exception with entry: {i}\n\t Sequence ID: {seqid} \n\tError Message: {e}")
     results_df = pd.DataFrame(results)
     return results_df
 
@@ -452,10 +453,15 @@ def check_stops(df):
     """
     df.loc[:, "translated_seq"] = df.apply(lambda x: translate_sequence(x["ScFv_seq"]), axis=1)
     df.loc[:, "contains_stop"] = df["ScFv_seq"].str.contains("\*")
-    print(f"{df['contains_stop'].sum()} number of final sequences with stop codons")
+    logging.info(f"Number of final sequences with stop codons: {df['contains_stop'].sum()}")
 
 
 def main():
+    logging.basicConfig(
+        filename="scfv_finder.log",
+        level=logging.INFO,
+        format="%(asctime)s:%(levelname)s:\n\t%(message)s"
+        )
     tools = ["blastn", "igblast"]
     print("Checking tools...")
     for tool in tools:
@@ -463,6 +469,7 @@ def main():
             print(f"{tool} not found in path")
             if input(f"Install {tool} (Y/N)?") in "Yesyes":
                 install_tool(tool)
+                logging.info(f"{tool} was installed")
             else:
                 tool_path = input("Enter the path to the tool \"bin\" folder: ")
                 env["PATH"] = tool_path + os.pathsep + env["PATH"]
@@ -519,9 +526,13 @@ def main():
     linker_seq = merged_df["ref_seq"].unique()[0]
 
     results_df = find_scfv_sequences(gdf, sequence_parts, linker_seq)
+    logging.info("ScFv sequences found")
     check_stops(results_df)
+    logging.info("sequences checked for stop codons")
     results_df.to_csv(f"{folder_path}/results_df.csv", index=False)
+    logging.info(f"Results saved to: {folder_path}/results_df.csv")
     print(results_df.shape[0])
+    logging.info(f"{results_df['ScFv_seq'].unique().shape[0]} ScFv sequences found")
     print(results_df["ScFv_seq"].unique().shape[0], "ScFv sequences found")
 
 
