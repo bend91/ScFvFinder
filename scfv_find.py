@@ -462,6 +462,10 @@ def main():
         level=logging.INFO,
         format="%(asctime)s:%(levelname)s:\n\t%(message)s"
         )
+    config = parse_config_file()
+    sequence_processing = "SEQUENCE_PROCESSING"
+    results_processing = "RESULTS_PROCESSING"
+
     tools = ["blastn", "igblast"]
     print("Checking tools...")
     for tool in tools:
@@ -478,45 +482,42 @@ def main():
     igblast = igblast[igblast.find(":") + 2:igblast.rfind("/bin/")]
     env["IGDATA"] = igblast
 
-    folder_path = get_folder_path()
-    fastq = [x for x in os.listdir(folder_path) if ".fastq" in x]
-    reference_fasta = input("Enter the full path of the fasta file to use as reference for BLAST, this should be just the linker sequence between the two variable chains: ")
-    reference_fasta = reference_fasta.strip().replace('\'', "").replace("\"", "")
+    folder_path = config[sequence_processing].get("folder_path")
+    # fastq = [x for x in os.listdir(folder_path) if ".fastq" in x]
+    # reference_fasta = input("Enter the full path of the fasta file to use as reference for BLAST, this should be just the linker sequence between the two variable chains: ")
+    # reference_fasta = reference_fasta.strip().replace('\'', "").replace("\"", "")
     # TODO - Move this to a config file
+
     variables = {
-        "min_length": 700, # minimum length of sequences you want to keep
-        "max_length": 800, # maximum length of sequences you want to keep
-        "quality": 15, # minimum quality of sequences you want to keep - fullcircle give you a graph showing quality, wouldn't recommend going lower than 10
-        "fprimer": "GTCCCTGGCTCCACTGGA", # Sequence of the forward primer used to amplify the PCR fragment
-        "rprimer": "GCGCTGGCGTCGTGGT", # Sequence of the reverse primer used to amplify the PCR fragment
-        "fastq": f"{folder_path}/{fastq[0]}", # Path to the fastq file
-        "reference": reference_fasta, # Path to the reference fasta file
+        "min_length": config[sequence_processing].getint("min_length"),
+        "max_length": config[sequence_processing].getint("max_length"),
+        "quality": config[sequence_processing].getint("quality"),
+        "fprimer": config[sequence_processing].get("fprimer"),
+        "rprimer": config[sequence_processing].get("rprimer"),
+        "fastq": config[sequence_processing].get("fastq"), # Path to the fastq file
+        "reference": config[sequence_processing].get("reference"), # Path to the reference fasta file
         "folder_path": folder_path
     }
     print("Running Nanofilt...")
     run_nanofilt(**variables)
-    print("Nanofilt successful\nRunning Cutadapt...")
+    print("Nanofilt successful", "Running Cutadapt...", sep="\n")
     run_cutadapt(**variables)
-    print("Cutadapt run successfully\nRunning awk...")
+    print("Cutadapt run successfully", "Running awk...", sep="\n")
     run_awk(folder_path)
-    print("Awk successfully run\nRunning BLAST to find sequences that have a central linker...")
+    print("Awk successfully run", "Running BLAST to find sequences that have a central linker...", sep="\n")
     run_blast(**variables)
     print("BLAST run successfully\nFiltering BLAST dataset...")
     # TODO - put this in config with above variables
+
     filtered_df = process_blast_df(
-        min_match_length=40,
-        min_pct_match=95,
-        query_start=300,
+        min_match_length=config[results_processing].getint("min_match_length"),
+        min_pct_match=config[results_processing].getint("min_pct_match"),
+        query_start=config[results_processing].getint("query_start"),
         folder_path=folder_path
       )
-    print("Filtering completed\nSplitting ScFv chains...")
+    print("Filtering completed", "Splitting ScFv chains...", sep="\n")
     merged_df = split_df(filtered_df, folder_path)
-    print("Splitting completed\nPreparing IGBLAST...")
-    # igblast = f"{data_path}/ncbi-igblast-1.22.0"
-    # if not check_igblast(igblast, data_path):
-    #     print("IGBLAST successfully downloaded")
-    print("Running IgBLAST...")
-
+    print("Splitting completed", "Running IgBLAST", sep="\n")
     run_igblast(igblast, folder_path)
     print("IgBLAST Successfully run")
     gdf = process_igblast_results(folder_path)
@@ -526,12 +527,11 @@ def main():
     linker_seq = merged_df["ref_seq"].unique()[0]
 
     results_df = find_scfv_sequences(gdf, sequence_parts, linker_seq)
-    logging.info("ScFv sequences found")
+    logging.info(f"{results_df.shape[0]} ScFv sequences found")
     check_stops(results_df)
     logging.info("sequences checked for stop codons")
     results_df.to_csv(f"{folder_path}/results_df.csv", index=False)
     logging.info(f"Results saved to: {folder_path}/results_df.csv")
-    print(results_df.shape[0])
     logging.info(f"{results_df['ScFv_seq'].unique().shape[0]} ScFv sequences found")
     print(results_df["ScFv_seq"].unique().shape[0], "ScFv sequences found")
 
