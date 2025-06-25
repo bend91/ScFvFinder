@@ -1,5 +1,6 @@
 import pandas as pd
 import subprocess
+import logging
 
 
 data_path = './data_files'
@@ -42,12 +43,12 @@ def write_process_to_file(process, file_path):
 
 def process_command_output(process, name):
     if process.returncode == 0:
-        print(f"{name} successful")
+        logging.info(f"{name} successful")
         return True
     else:
-        print(f"{name} failed")
-        print("Stdout: ", process.stdout.decode("utf-8"), "\n")
-        print("StdErr: ", process.stderr.decode("utf-8"), "\n")
+        logging.error(f"{name} failed")
+        logging.error("Stdout: ", process.stdout.decode("utf-8"), "\n")
+        logging.error("StdErr: ", process.stderr.decode("utf-8"), "\n")
         raise Exception(f"{name} failed")
 
 def process_fasta_file(fasta_file, id_list):
