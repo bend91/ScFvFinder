@@ -3,6 +3,7 @@ import subprocess
 from utils import *
 import numpy as np
 import logging
+import hashlib
 
 
 # TODO - Add logging to a logfile instead of printing - done this, kept some prints for users to see progress
@@ -280,6 +281,7 @@ def run_igblast(igblast: str, folder_path: str):
     process_command_output(process, "IGBlast")
 
 
+# TODO - check the stop correction
 def process_igblast_results(folder_path: str):
     fp = f"{folder_path}/split_fasta_output.tsv"
     split_fasta_df = pd.read_csv(fp, sep="\t")
@@ -452,7 +454,7 @@ def check_stops(df):
     Post find check to make sure no stop codons have slipped through
     """
     df.loc[:, "translated_seq"] = df.apply(lambda x: translate_sequence(x["ScFv_seq"]), axis=1)
-    df.loc[:, "contains_stop"] = df["ScFv_seq"].str.contains("\*")
+    df.loc[:, "contains_stop"] = df["translated_seq"].str.contains("\*")
     logging.info(f"Number of final sequences with stop codons: {df['contains_stop'].sum()}")
 
 
@@ -511,7 +513,7 @@ def main():
 
     filtered_df = process_blast_df(
         min_match_length=config[results_processing].getint("min_match_length"),
-        min_pct_match=config[results_processing].getint("min_pct_match"),
+        min_pct_match=config[results_processing].getfloat("min_pct_match"),
         query_start=config[results_processing].getint("query_start"),
         folder_path=folder_path
       )
@@ -530,10 +532,20 @@ def main():
     logging.info(f"{results_df.shape[0]} ScFv sequences found")
     check_stops(results_df)
     logging.info("sequences checked for stop codons")
-    results_df.to_csv(f"{folder_path}/results_df.csv", index=False)
+
     logging.info(f"Results saved to: {folder_path}/results_df.csv")
     logging.info(f"{results_df['ScFv_seq'].unique().shape[0]} ScFv sequences found")
     print(results_df["ScFv_seq"].unique().shape[0], "ScFv sequences found")
+    # Gets the counts for each amino acid sequence
+    counts = pd.DataFrame(df["translated_seq"].value_counts())
+    # Assigns a unique id to each sequence - this is a hash of the sequence so in theory translatable across runs
+    counts.loc[:, "id"] = [hashlib.sha256(x.encode("utf-8")).hexdigest() for x in counts.index]
+    results_df.join(counts["id"], on="translated_seq")
+    results_df.to_csv(f"{folder_path}/results_df.csv", index=False)
+    counts.reset_index(inplace=True)
+    counts.columns = ["translated_seq", "count", "id"]
+    counts.to_csv(f"{folder_path}/count_results.csv", index=False)
+
 
 
 
