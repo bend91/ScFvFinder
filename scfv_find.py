@@ -527,7 +527,7 @@ def main():
     print("IgBLAST Results filtered for complete variable sequences")
 
     sequence_parts = ["fwr1", "cdr1", "fwr2", "cdr2", "fwr3", "cdr3", "fwr4"]
-    linker_seq = merged_df["ref_seq"].unique()[0]
+    linker_seq = config["SEQUENCE_PARTS"].get("linker_seq")
 
     results_df = find_scfv_sequences(gdf, sequence_parts, linker_seq)
     logging.info(f"{results_df.shape[0]} ScFv sequences found")
