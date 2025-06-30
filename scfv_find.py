@@ -17,6 +17,7 @@ env = os.environ.copy()
 def check_tools(tool):
     try:
         subprocess.run([tool])
+        return True
     except FileNotFoundError:
         return False
 
@@ -193,7 +194,7 @@ def split_df(df: pd.DataFrame, folder_path: str)->pd.DataFrame:
     if processed_fasta.shape[0] == df.shape[0]:
         logging.info("All IDS found in fasta file")
     else:
-        logging.error(f"Processed_fasta: {processed_fasta.shape[0]}", f"Dataframe: {df.shape[0]}")
+        logging.error(f"Processed_fasta: {processed_fasta.shape[0]}\tDataframe: {df.shape[0]}")
         logging.error("Something has gone wrong with ID processing")
 
     # Merge the dataframes and save them
@@ -537,7 +538,7 @@ def main():
     logging.info(f"{results_df['ScFv_seq'].unique().shape[0]} ScFv sequences found")
     print(results_df["ScFv_seq"].unique().shape[0], "ScFv sequences found")
     # Gets the counts for each amino acid sequence
-    counts = pd.DataFrame(df["translated_seq"].value_counts())
+    counts = pd.DataFrame(results_df["translated_seq"].value_counts())
     # Assigns a unique id to each sequence - this is a hash of the sequence so in theory translatable across runs
     counts.loc[:, "id"] = [hashlib.sha256(x.encode("utf-8")).hexdigest() for x in counts.index]
     results_df.join(counts["id"], on="translated_seq")
