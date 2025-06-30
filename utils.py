@@ -1,13 +1,22 @@
 import pandas as pd
 import subprocess
 import logging
+import os
+import configparser
 
 
 data_path = './data_files'
 
 
-aa_fp = f"{data_path}/tidy_aa.csv"
+aa_fp = os.path.join(f"{data_path}", "tidy_aa.csv")
 tidy_df = pd.read_csv(aa_fp)
+
+
+def parse_config_file():
+    config_fp = "./config.ini"
+    config = configparser.ConfigParser()
+    config.read(config_fp)
+    return config
 
 
 def check_translation(seq):
