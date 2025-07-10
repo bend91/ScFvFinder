@@ -4,6 +4,7 @@ from utils import *
 import numpy as np
 import logging
 import hashlib
+import difflib
 
 
 # TODO - Add logging to a logfile instead of printing - done this, kept some prints for users to see progress
@@ -202,10 +203,12 @@ def split_df(df: pd.DataFrame, folder_path: str)->pd.DataFrame:
     # merged_df.to_csv(f"{folder_path}/merged_df.csv", index=False)
 
     # This gets the pre linker sequence and the post-linker sequence anmd saves the dataframe as merged_df.csv
-    merged_df.loc[:, "pre_linker_sequence"] = merged_df.apply(lambda x: x["sequence"][:x["query_start"]], axis=1)
-    merged_df.loc[:, "post_linker_sequence"] = merged_df.apply(lambda x: x["sequence"][x["query_end"]:], axis=1)
+    # TODO - is there a more efficient way of doing this, or at least a way of combining into a single apply - yes, passing result_type="expand" expands iterable returns into columns
+    merged_df.loc[:, ["pre_linker_sequence", "post_linker_sequence"]] = merged_df.apply(lambda row: [row["sequence"][:row["query_start"]], row["sequence"][row["query_end"]:]], axis=1, result_type="expand")
+    # merged_df.loc[:, "pre_linker_sequence"] = merged_df.apply(lambda x: x["sequence"][:x["query_start"]], axis=1)
+    # merged_df.loc[:, "post_linker_sequence"] = merged_df.apply(lambda x: x["sequence"][x["query_end"]:], axis=1)
     merged_df.to_csv(f"{folder_path}/merged_df.csv", index=False)
-
+    pd.DataFrame.apply
     # This makes a new fasta file which splits up the pre-linker sequence and the post-linker sequence
     print("Writing new fasta file with split sequences...")
     split_fasta_file = f"{folder_path}/split_fasta.fasta"
@@ -283,12 +286,16 @@ def run_igblast(igblast: str, folder_path: str):
 
 
 # TODO - check the stop correction
-def process_igblast_results(folder_path: str):
+def process_igblast_results(folder_path: str, aa_mtx:pd.DataFrame):
     fp = f"{folder_path}/split_fasta_output.tsv"
     split_fasta_df = pd.read_csv(fp, sep="\t")
     print(f"{split_fasta_df.shape[0]} total number of sequences to process")
     sequence_mask = split_fasta_df["sequence"].notna()
     filtered_split_fasta_df = split_fasta_df.loc[sequence_mask]
+
+    # Can fwr4 be omitted from this and just add a 'standard' fwr4 at the end?
+    conserved_parts = ["fwr1", "fwr2", "fwr3", "fwr4"]
+    variable_regions = ["cdr1", "cdr2", "cdr3"]
     # Filters for functional sequences
     #    Only well delimited V-domains (no NAs for the V gene start nor J gene end) from the IgBLAST output are considered.
     # Removing sequences with stop codons
@@ -296,42 +303,169 @@ def process_igblast_results(folder_path: str):
     logging.info(f"V Mask total: {v_mask.sum()}")
     j_mask = filtered_split_fasta_df["j_alignment_end"].notna()
     logging.info(f"J Mask total: {j_mask.sum()}")
-    # Fixing stop codons in conserved regions that are likely sequencing errors
-    stop_find = filtered_split_fasta_df["sequence_aa"].str.find("*")
-    stop_mask2 = (stop_find != -1) & ((stop_find * 3) < filtered_split_fasta_df["fwr4_end"])
-    stop_fix_mask3 = filtered_split_fasta_df["sequence_aa"].str.count("\*") < 2
-    stop_fix_mask = stop_mask2 & stop_fix_mask3
-    logging.info(f"Potential stops to fix: {stop_fix_mask.sum()}")
-    filtered_split_fasta_df.loc[stop_fix_mask, "stop_location"] = stop_find * 3
-    filtered_split_fasta_df.loc[stop_fix_mask, "codon_change_pos"] = filtered_split_fasta_df.loc[stop_fix_mask].apply(check_fw, axis=1)
-    stop_fix_mask = stop_fix_mask & filtered_split_fasta_df["codon_change_pos"].notna()
-    conserved_parts = ["fwr1", "fwr2", "fwr3", "fwr4"]
-    conserved_mask = np.zeros(len(filtered_split_fasta_df), dtype=bool)
-    # part_name = np.full(len(filtered_split_fasta_df), None)
+    # Filtering out parts that haven't aligned or been identified in the framework or cdrs
+    part_mask = filtered_split_fasta_df[conserved_parts + variable_regions].notna().all(axis=1)
+
+    df2 = filtered_split_fasta_df.loc[sequence_mask & v_mask & j_mask & part_mask & part_len_mask]
+    df2.loc["codon_fixed"] = False
+    # TODO - find the frame for each fwr
     for part in conserved_parts:
-        in_range = (filtered_split_fasta_df["stop_location"] > filtered_split_fasta_df[f"{part}_start"]) & (filtered_split_fasta_df["stop_location"] < filtered_split_fasta_df[f"{part}_end"])
-        conserved_mask |= in_range
-        filtered_split_fasta_df.loc[in_range, "part_to_change"] = part
-        # part_name[in_range & (pd.isnull(part_name))] = part
-        filtered_split_fasta_df.loc[in_range & stop_fix_mask, part] = filtered_split_fasta_df.loc[in_range & stop_fix_mask].apply(fix_codon, axis=1)
-        filtered_split_fasta_df.loc[in_range & stop_fix_mask, "stop_fixed"] = True
-    msg = f"Actual stops fixed: {conserved_mask.sum()}"
+        columns_to_add = [
+            f"{part}_germline",
+            f"{part}_germline_aa",
+            f"{part}_aa_frame",
+            f"{part}_germline_aa_frame",
+            f"{part}_aa_correct",
+            f"{part}_aa_codons"
+        ]
+
+        processing_cols = [
+            f"{part}_start",
+            f"{part}_end",
+            "v_sequence_start",
+            "v_sequence_end",
+            "germline_alignment",
+            "germline_alignment_aa",
+            part,
+        ]
+
+        stop_fixing_cols = [
+            f"{part}_germline",
+            f"{part}_germline_aa_frame",
+            f"{part}_aa_correct",
+            f"{part}_aa_codons",
+            f"{part}_aa_frame"
+        ]
+        print(part)
+        df2 = df2.join(df2.loc[:, processing_cols].apply(lambda row: part_df_processing(row, part), axis=1, result_type="expand").add_prefix(f"{part}_"))
+        stop_mask = df2[f"{part}_aa_correct"].str.contains("\*") & (df2[columns_to_add].notna().all())
+        df2 = df2.join(df2.loc[stop_mask, stop_fixing_cols].apply(lambda row: stop_find_df_processing(row, part), axis=1, result_type="expand").add_prefix(f"{part}_"))
+        df2.loc[:,"codon_fixed"] = df2[f"codon_fixed"] | df2[f"{part}_codon_fixed"]
+
+    msg = f"Actual stops fixed: {df2["codon_fixed"].sum()}"
     print(msg)
     logging.info(msg)
     sequence_parts = ["fwr1", "cdr1", "fwr2", "cdr2", "fwr3", "cdr3", "fwr4"]
-    parts_mask = filtered_split_fasta_df[sequence_parts].isna().any(axis=1)
-    filtered_split_fasta_df = filtered_split_fasta_df.loc[v_mask & j_mask & ~parts_mask | conserved_mask]
-    print(f"{filtered_split_fasta_df.shape[0]} number of sequences left after filtering")
     # Removing the _pre and _post from the sequence ids and putting them in their own column
-    filtered_split_fasta_df.loc[:, "sequence_id_clean"] = filtered_split_fasta_df["sequence_id"].str.replace("_pre", "").str.replace("_post", "")
+    df2.loc[:, "sequence_id_clean"] = df2["sequence_id"].str.replace("_pre", "").str.replace("_post", "")
     # Only keeping sequences where there are 2 alignments (heavy and light)
-    gdf = filtered_split_fasta_df.groupby("sequence_id_clean").filter(lambda x: len(x) == 2)
+    gdf = df2.groupby("sequence_id_clean").filter(lambda x: len(x) == 2)
     # Getting the unique sequences
     sequence_ids = gdf["sequence_id_clean"].unique()
     logging.info(f"Unique sequence ids: {len(sequence_ids)}")
     # Grouping by sequence ids
     gdf = gdf.groupby("sequence_id_clean")
     return gdf
+
+
+def fix_codon(codon_list, fix_idx, replacement_codon):
+    codon_list[fix_idx] = replacement_codon
+    return codon_list
+
+
+def part_df_processing(row, part):
+    part_start = row[f"{part}_start"] - (row["v_sequence_start"] - 1)
+    part_end = row[f"{part}_end"] - (row["v_sequence_start"] - 1)
+    germline = row["germline_alignment"][int(part_start): int(part_end)]
+    germline_aa = row["germline_alignment_aa"][int(part_start) // 3: int(part_end) // 3]
+    aa_frame = find_translation_frame(row[part], germline_aa)
+    germline_aa_frame = find_translation_frame(germline, germline_aa)
+    aa_correct, aa_codons = translate_sequence(row[part], frame=aa_frame, return_codons=True)
+    return = {
+        f"germline": germline,
+        f"germline_aa": germline_aa,
+        f"aa_frame": aa_frame,
+        f"germline_aa_frame": germline_aa_frame,
+        f"aa_correct": aa_correct,
+        f"aa_codons": aa_codon
+    }
+
+
+
+def stop_find_df_processing(row, part):
+    germ_translated = translate_sequence(row[f"{part}_germline"], int(row[f"{part}_germline_aa_frame"]), return_codons=True)
+    alignment_a, alignment_b = sequence_alignment(row[f"{part}_aa_correct"], germ_translated[0], aa_mtx, d=-0.1)
+    stop_loc = alignment_b.find("*")
+    new_part = None
+    codon_fixed = False
+    if stop_loc != -1:
+        if alignment_a[stop_loc] not in ["X", "-", "*"]:
+            stop_codon_loc = len(alignment_b[:stop_loc + 1].replace("-", "")) - 1
+            replacement_codon = germ_translated[1][len(alignment_a[:stop_loc + 1].replace("-", ""))-1]
+            fixed_codons = fix_codon(row[f"{part}_aa_codons"], stop_codon_loc, replacement_codon)
+            new_part = row[f"{part}"][:row[f"{part}_aa_frame"] - 1] + "".join(fixed_codons)
+            codon_fixed = True
+    return {
+        "germline_aa_correct": germ_translated[0],
+        "germline_aa_codons": germ_translated[1],
+        "alignment_a": alignment_a,
+        "alignment_b": alignment_b,
+        "new": new_part,
+        "codon_fixed": codon_fixed
+    }
+
+
+
+
+def find_translation_frame(query_seq, ref_seq):
+    """
+    Finds translation name based on similarity to reference aa sequence
+    """
+    sequence_match = 0
+    best_frame = None
+    for frame in range(1, 4):
+        match = SequenceMatcher(None, ref_seq, translate_sequence(query_seq, frame)).ratio()
+        if match > sequence_match:
+            sequence_match = match
+            best_frame = frame
+    return best_frame
+
+# TODO - add in cdr consensus identification
+def cdr_consensus(df):
+    df.loc[:, "all_cdr"] = df["cdr1"].astype(str) + df["cdr2"].astype(str) + df["cdr3"].astype(str)
+    fasta_string = df.apply(lambda row: f">{row['sequence_id']}\n{row['all_cdr']}\n", axis=1)
+    with open("cdr_sequences.fasta", "w") as f:
+        f.writelines(fasta_string)
+
+    subprocess.run(["vsearch", "--cluster_fast", "cdr_sequences.fasta", "--id", "0.98", "--centroids", "cdr_centroids.fasta", "--uc", "cdr_clusters.uc"], capture_output=True, env=env)
+    # vsearch --cluster_fast cdr_concat.fasta --id 0.98 --centroids cdr_centroids.fasta --uc cdr_clusters.uc
+
+"""
+vsearch output:
+cdr_clusters.uc headings:
+- Record type - H is a hit; S is centroid; C is cluster; N is no hit
+- Cluster number
+- Sequence length
+- Identity
+- Strand
+- Query Start
+- Target Start
+- Alignment length
+- Query label
+- Target label
+- Alignment
+
+Enabling vsearch and filtering out cdrs that contain stop codons being used as centroids:
+Filter centroids_raw.fasta:
+
+    Purpose: Identify which of the chosen centroids contain stop codons.
+
+    Action: Run the Python script (or similar) on centroids_raw.fasta to create centroids_filtered.fasta (containing only centroids without stop codons). Also, identify the IDs of the centroids you discarded.
+
+Re-cluster Reads from "Bad" Centroid Clusters:
+
+    Purpose: Take all the reads that clustered around a "bad" centroid (one with a stop codon) and try to re-assign them to a "good" centroid, or see if they form new "good" clusters.
+
+    Action:
+
+        Parse clusters_raw.uc. For each 'H' record whose Target label (field 10) corresponds to a "bad" centroid ID, extract the Query label (field 9). Collect all these query labels into a new FASTA file, say reads_from_bad_clusters.fasta.
+
+        Now, re-cluster reads_from_bad_clusters.fasta against your centroids_filtered.fasta using --usearch_global as in Method 1. Or, if you want them to potentially form new "good" clusters, run vsearch --cluster_fast on reads_from_bad_clusters.fasta by itself (this is risky, as it could generate more "bad" centroids).
+
+        A more robust approach here would be to merge reads_from_bad_clusters.fasta with any unclustered_reads.fasta from the first pass and then re-run cluster_fast or usearch_global against all good centroids, combining all information.
+
+Then use MAFTT to identify consensus sequence for each cluster
+"""
 
 
 # TODO - optimise this to use in the main code
@@ -465,7 +599,11 @@ def main():
         level=logging.INFO,
         format="%(asctime)s:%(levelname)s:\n\t%(message)s"
         )
-    config = parse_config_file()
+    config_fp = None
+    if input("Use a custom config file? ") in "Yesyes":
+        config_fp = input("Enter the full path to your config file: ")
+
+    config = parse_config_file(config_fp)
     sequence_processing = "SEQUENCE_PROCESSING"
     results_processing = "RESULTS_PROCESSING"
 
@@ -523,7 +661,8 @@ def main():
     print("Splitting completed", "Running IgBLAST", sep="\n")
     run_igblast(igblast, folder_path)
     print("IgBLAST Successfully run")
-    gdf = process_igblast_results(folder_path)
+    aa_mtx = pd.read_csv(config[results_processing].get("aa_mtx"), index_col=0)
+    gdf = process_igblast_results(folder_path, aa_mtx)
     print("IgBLAST Results filtered for complete variable sequences")
 
     sequence_parts = ["fwr1", "cdr1", "fwr2", "cdr2", "fwr3", "cdr3", "fwr4"]
