@@ -12,6 +12,17 @@ import difflib
 # TODO - Add multi-platform support, at the moment just MacOS is supported
 
 
+# PriorityIssue
+# 🔴 Crashes part_len_mask undefined
+# 🔴 Crashes aa_mtx scope issue in stop_find_df_processing
+# 🟠 Wrong results find_frame logic inverted
+# 🟠 Wrong results NW gap initialisation commented out
+# 🟠 Wrong results results_df.join result not saved
+# 🟡 Silent bugs Duplicate columns from repeated .join in loop
+# 🟡 Silent bugs Stale split_fasta.fasta reuse
+# 🟢 Cleanup Orphan pd.DataFrame.apply line, two unused stop-fixing implementations
+
+
 env = os.environ.copy()
 
 
@@ -371,7 +382,7 @@ def part_df_processing(row, part):
     aa_frame = find_translation_frame(row[part], germline_aa)
     germline_aa_frame = find_translation_frame(germline, germline_aa)
     aa_correct, aa_codons = translate_sequence(row[part], frame=aa_frame, return_codons=True)
-    return = {
+    return {
         f"germline": germline,
         f"germline_aa": germline_aa,
         f"aa_frame": aa_frame,
